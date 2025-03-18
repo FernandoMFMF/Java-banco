@@ -1,0 +1,146 @@
+import java.sql.*;
+
+class bancoDados {
+    private final String url = "jdbc:sqlite:gerenciador_banco.db";
+
+    public bancoDados() {
+        String sql = "CREATE TABLE IF NOT EXISTS conta ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "nome TEXT NOT NULL, "
+                + "sobrenome TEXT NOT NULL, "
+                + "cpf TEXT UNIQUE NOT NULL, "
+                + "senha TEXT NOT NULL, "
+                + "saldo REAL NOT NULL DEFAULT 0.00)";
+        try (Connection conexao = DriverManager.getConnection(url);
+             Statement stmt = conexao.createStatement()) {
+            stmt.execute(sql);
+        } catch (SQLException e) {
+            System.out.println("Erro ao conectar ao banco de dados: " + e.getMessage());
+        }
+    }
+
+    public boolean cpfJaExiste(String cpf) {
+        String sql = "SELECT COUNT(*) AS total FROM conta WHERE cpf = ?";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql)) {
+            pstmt.setString(1, cpf);
+            ResultSet rs = pstmt.executeQuery();
+            return rs.next() && rs.getInt("total") > 0;
+        } catch (SQLException e) {
+            System.out.println("Erro ao verificar CPF: " + e.getMessage());
+        }
+        return false;
+    }
+
+    public int criarConta(String nome, String sobrenome, String cpf, String senha) {
+        if (cpfJaExiste(cpf)) {
+            System.out.println("Erro: Já existe uma conta cadastrada com esse CPF!");
+            return -1;
+        }
+        String sql = "INSERT INTO conta (nome, sobrenome, cpf, senha, saldo) VALUES (?, ?, ?, ?, 0.00)";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            pstmt.setString(1, nome);
+            pstmt.setString(2, sobrenome);
+            pstmt.setString(3, cpf);
+            pstmt.setString(4, senha);
+            pstmt.executeUpdate();
+            ResultSet rs = pstmt.getGeneratedKeys();
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            System.out.println("Erro ao criar conta: " + e.getMessage());
+        }
+        return -1;
+    }
+
+    public int autenticarConta(String cpf, String senha) {
+        String sql = "SELECT id FROM conta WHERE cpf = ? AND senha = ?";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql)) {
+            pstmt.setString(1, cpf);
+            pstmt.setString(2, senha);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("id");
+            }
+        } catch (SQLException e) {
+            System.out.println("Erro ao autenticar conta: " + e.getMessage());
+        }
+        return -1;
+    }
+
+    public String buscarNomePorCpf(String cpf) {
+        String sql = "SELECT nome, sobrenome FROM conta WHERE cpf = ?";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql)) {
+            pstmt.setString(1, cpf);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("nome") + " " + rs.getString("sobrenome");
+            }
+        } catch (SQLException e) {
+            System.out.println("Erro ao buscar nome: " + e.getMessage());
+        }
+        return "Desconhecido";
+    }
+
+    public double verificarSaldo(int contaId) {
+        String sql = "SELECT saldo FROM conta WHERE id = ?";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql)) {
+            pstmt.setInt(1, contaId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getDouble("saldo");
+            }
+        } catch (SQLException e) {
+            System.out.println("Erro ao consultar saldo: " + e.getMessage());
+        }
+        return 0.0;
+    }
+
+    public void depositar(int contaId, double valor) {
+        if (valor <= 0) {
+            System.out.println("Valor inválido para depósito.");
+            return;
+        }
+        String sql = "UPDATE conta SET saldo = saldo + ? WHERE id = ?";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql)) {
+            pstmt.setDouble(1, valor);
+            pstmt.setInt(2, contaId);
+            int rowsAffected = pstmt.executeUpdate();
+            if (rowsAffected > 0) {
+                System.out.println("Depósito de R$" + valor + " realizado com sucesso!");
+            }
+        } catch (SQLException e) {
+            System.out.println("Erro ao depositar dinheiro: " + e.getMessage());
+        }
+    }
+
+    public void sacar(int contaId, double valor) {
+        double saldoAtual = verificarSaldo(contaId);
+        if (valor <= 0) {
+            System.out.println("Valor inválido para saque.");
+            return;
+        }
+        if (valor > saldoAtual) {
+            System.out.println("Saldo insuficiente!");
+            return;
+        }
+        String sql = "UPDATE conta SET saldo = saldo - ? WHERE id = ?";
+        try (Connection conexao = DriverManager.getConnection(url);
+             PreparedStatement pstmt = conexao.prepareStatement(sql)) {
+            pstmt.setDouble(1, valor);
+            pstmt.setInt(2, contaId);
+            int rowsAffected = pstmt.executeUpdate();
+            if (rowsAffected > 0) {
+                System.out.println("Saque de R$" + valor + " realizado com sucesso!");
+            }
+        } catch (SQLException e) {
+            System.out.println("Erro ao sacar dinheiro: " + e.getMessage());
+        }
+    }
+}
